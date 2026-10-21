@@ -1,0 +1,7 @@
+# Local runtime data, never commit
+config
+paused
+*.log
+*.err
+*.bak
+.DS_Store

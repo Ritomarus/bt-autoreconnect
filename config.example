@@ -1,0 +1,14 @@
+# bt-autoreconnect config
+# install.sh copies this to ~/.config/bt-autoreconnect/config
+
+# MAC address of the headphone (find it with: blueutil --paired)
+# Either aa-bb-cc-dd-ee-ff or AA:BB:CC:DD:EE:FF works
+TARGET_MAC="aa-bb-cc-dd-ee-ff"
+
+# Name used in log messages only
+DEVICE_NAME="WH-1000XM6"
+
+# Optional tuning (seconds)
+# POLL_CONNECTED=5
+# POLL_RETRY=6
+# GRACE=3

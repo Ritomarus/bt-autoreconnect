@@ -1,0 +1,7 @@
+#!/bin/bash
+# Fake "log stream" for tests/run.sh: prints the same banner the real one does
+# (it echoes the predicate), then replays lines appended to the fake
+# bluetoothd log in $BT_TEST_DIR/fakelog.
+# Called as: log stream --style compact --predicate <predicate>
+echo "Filtering the log data using \"$5\""
+exec tail -n 0 -F "$BT_TEST_DIR/fakelog" 2>/dev/null

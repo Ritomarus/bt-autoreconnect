@@ -1,6 +1,8 @@
 # Local runtime data, never commit
 config
 paused
+last_disconnect
+last_disconnect.tmp
 *.log
 *.err
 *.bak

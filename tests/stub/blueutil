@@ -1,0 +1,21 @@
+#!/bin/bash
+# Fake blueutil for tests/run.sh. State lives in $BT_TEST_DIR:
+#   conn    = 1 if the headphone is connected to the Mac
+#   present = 1 if it is on and in range (a connect attempt will succeed)
+D="$BT_TEST_DIR"
+case "$1" in
+    -p)
+        echo 1
+        ;;
+    --is-connected)
+        cat "$D/conn"
+        ;;
+    --connect)
+        echo "$(date +%T) probe" >> "$D/probes"
+        if [ "$(cat "$D/present")" = "1" ]; then
+            echo 1 > "$D/conn"
+        else
+            sleep 1    # stands in for the page timeout
+        fi
+        ;;
+esac

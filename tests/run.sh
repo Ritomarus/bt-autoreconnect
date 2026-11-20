@@ -1,7 +1,7 @@
 #!/bin/bash
 # Drives autoreconnect.sh through real-world scenarios against a fake
 # Bluetooth stack (tests/stub), with all timings shortened. Needs no
-# headphone and no Bluetooth permission. Takes about 1.5 minutes.
+# headphone and no Bluetooth permission. Takes about 2 minutes.
 #
 # Usage: tests/run.sh
 
@@ -64,15 +64,21 @@ check "link loss: not paused"                           '! paused'
 pres 1; sleep 4
 check "link loss: reconnected when back in range"       'connected'
 
-say "headphone powered off for 12s (longer than the steal window), then on"
-pres 0; conn 0; ev "ACL disconnected: $MAC, result 0, reason 10719"; sleep 12
+say "headphone powered off for 13s (longer than the steal window), then on"
+pres 0; conn 0; ev "ACL disconnected: $MAC, result 0, reason 10719"; sleep 13
+p2=$(probes)
+check "power off: probed during the steal window"       '[ "$(probes)" -gt "$p0" ]'
 pres 1; sleep 4
-check "power cycle: reconnected after power-on"         'connected'
+check "power off: no paging after the steal window"     '[ "$(probes)" = "$p2" ]'
+check "power off: waiting, not paused"                  '! paused'
+say "headphone reconnects by itself on power-on"
+conn 1; sleep 3
+check "power on: its own reconnect is picked up"        'grep -q "connected (by the headphone or by hand)" "$OUT"'
 say "powered off again right away"
-pres 0; conn 0; ev "ACL disconnected: $MAC, result 0, reason 10719"; sleep 12
+pres 0; conn 0; ev "ACL disconnected: $MAC, result 0, reason 10719"; sleep 13
 check "power cycle: a second power-off is not a tug-of-war" '! paused'
-pres 1; sleep 4
-check "power cycle: reconnected after second power-on"  'connected'
+pres 1; conn 1; sleep 3
+check "power cycle: guarding again after second power-on" '! paused && connected'
 
 say "headphone switches to another device (stays on), gets pulled back, switches again"
 conn 0; ev "ACL disconnected: $MAC, result 0, reason 10719"; sleep 5
@@ -86,11 +92,22 @@ say "headphone comes back to the Mac on its own"
 conn 1; sleep 3
 check "came back on its own: guarding resumes"          '! paused'
 
+say "manual disconnect whose link only drops after SETTLE has passed"
+p3=$(probes)
+ev "A2DPService is disconnecting device $MAC"; sleep 6
+conn 0; ev "ACL disconnected: $MAC, result 0, reason 10722"; sleep 6
+check "slow manual disconnect: paused"                  'paused'
+check "slow manual disconnect: no reconnect probe"      '[ "$(probes)" = "$p3" ]'
+check "slow manual disconnect: headphone left disconnected" '! connected'
+say "user connects by hand"
+conn 1; sleep 3
+check "connected again: guarding resumes"               '! paused'
+
 say "manual disconnect that is undone immediately (link never drops)"
 ev "A2DPService is disconnecting device $MAC"; sleep 7
 check "undone disconnect: flag cleared after settling"  '! paused'
 
-kill "$DPID"; sleep 1
+kill "$DPID"; sleep 3    # the trap runs once the daemon's current sleep ends
 check "exit: no stray watcher processes" '! pgrep -f "tail -n 0 -F $BT_TEST_DIR/fakelog" >/dev/null'
 
 if [ "$fail" != "0" ] || [ "${VERBOSE:-0}" = "1" ]; then

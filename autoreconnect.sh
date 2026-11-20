@@ -3,9 +3,11 @@
 #
 # What happens after a disconnect depends on why it happened:
 #   * link lost (walked out of range)       -> reconnect when it is back
-#   * headphone ended the connection itself -> reconnect when it is back; but
-#     (powered off / switched to another       if it leaves again right after
-#      device)                                 being pulled back, let it go
+#   * headphone ended the connection itself -> try to pull it back for
+#     (powered off / switched to another       STEAL_WINDOW seconds, then wait
+#      device)                                 for it to reconnect by itself;
+#                                              if it leaves again right after
+#                                              being pulled back, let it go
 #   * disconnected by hand on this Mac      -> leave it alone
 # "Leave it alone" lasts until the headphone is connected to this Mac again
 # (by you, or by the headphone itself); then guarding resumes.
@@ -24,10 +26,11 @@ TARGET_MAC=""
 DEVICE_NAME="headphone"
 POLL_CONNECTED=5     # seconds between checks while connected
 GRACE=3              # wait after a disconnect so the watcher can report why
-# A manual disconnect is logged 2-3 s before the link really drops. While the
-# pause flag is younger than this, "still connected" does not count as
-# "connected again".
-SETTLE=10
+# A manual disconnect is logged before the link really drops: usually 2-3 s,
+# but up to 25 s has been seen. While the pause flag is younger than this,
+# "still connected" does not count as "connected again". (If the link drops
+# even later, its reason, 10722 = closed by this Mac, pauses again.)
+SETTLE=30
 # Seconds between reconnect probes while the headphone is away. A failed probe
 # keeps the radio paging for ~15 s, which competes with other Bluetooth
 # devices and 2.4 GHz Wi-Fi, so back off once a quick return becomes unlikely.
@@ -37,6 +40,10 @@ POLL_RETRY_SLOW=30   # after that
 # The headphone ended the connection and we got it back within STEAL_WINDOW
 # seconds: it never went away, it had left on purpose. If it then leaves again
 # within YIELD_WINDOW seconds, stop pulling it back. YIELD_WINDOW=0 disables.
+# If it is not back within STEAL_WINDOW it is off: stop paging it and let it
+# reconnect by itself when it is powered on. Paging it at that moment makes
+# both sides set up the hands-free profile at once, and macOS can get stuck
+# half-way: connected, but the Mac never sends it any sound.
 STEAL_WINDOW=45
 YIELD_WINDOW=180
 BLUEUTIL=""              # found automatically when empty
@@ -149,11 +156,20 @@ note_disconnect() {
     local pulled_back="$PULLED_BACK"
     PULLED_BACK=0
     REMOTE_DROP=0
+    WAITING=0
 
     # Manual disconnect: the watcher already logged it
     [ -e "$PAUSE_FLAG" ] && return
 
     case "$reason" in
+        10722)
+            # This Mac closed the link and no pause is in place (the link took
+            # longer than SETTLE to drop, or the watcher missed the line):
+            # still a disconnect by hand, unless Bluetooth was just turned off
+            [ "$("$BLUEUTIL" -p 2>/dev/null)" = "1" ] || return
+            touch "$PAUSE_FLAG"
+            log_msg "manual disconnect of $DEVICE_NAME detected (link closed by this Mac), auto-reconnect paused"
+            ;;
         10719|10720|10721)
             if [ "$YIELD_WINDOW" -gt 0 ] && [ "$pulled_back" != "0" ] &&
                [ $((DOWN_SINCE - pulled_back)) -le "$YIELD_WINDOW" ]; then
@@ -181,6 +197,7 @@ WAS_CONN=0       # 1 if the headphone was connected at the last check
 DOWN_SINCE=0     # when the current disconnect was first seen (0 = not down)
 REMOTE_DROP=0    # when the headphone last ended the connection itself
 PULLED_BACK=0    # when we last reconnected right after such a drop
+WAITING=0        # 1 once we stopped paging and wait for it to come back itself
 
 while true; do
     # If Bluetooth is turned off, wait and check again
@@ -207,6 +224,7 @@ while true; do
         [ "$WAS_CONN" = "0" ] && REMOTE_DROP=0    # it came back without us
         WAS_CONN=1
         DOWN_SINCE=0
+        WAITING=0
         sleep "$POLL_CONNECTED"
         continue
     fi
@@ -223,6 +241,18 @@ while true; do
     # Paused (manual disconnect, or the headphone wants to be elsewhere):
     # leave it alone until it connects again
     if [ -e "$PAUSE_FLAG" ]; then
+        sleep "$POLL_CONNECTED"
+        continue
+    fi
+
+    # The headphone ended the connection itself and is not back within
+    # STEAL_WINDOW: it is off. Stop paging it; it reconnects to this Mac by
+    # itself when powered on (see STEAL_WINDOW for why we must not page then)
+    if [ "$REMOTE_DROP" != "0" ] && [ $((NOW - REMOTE_DROP)) -gt "$STEAL_WINDOW" ]; then
+        if [ "$WAITING" = "0" ]; then
+            WAITING=1
+            log_msg "$DEVICE_NAME not back within ${STEAL_WINDOW}s, waiting for it to reconnect by itself"
+        fi
         sleep "$POLL_CONNECTED"
         continue
     fi

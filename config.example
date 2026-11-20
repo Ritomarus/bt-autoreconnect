@@ -11,9 +11,9 @@ DEVICE_NAME="WH-1000XM6"
 # Optional tuning (seconds)
 # POLL_CONNECTED=5      # between checks while connected
 # GRACE=3               # wait after a disconnect before deciding why it happened
-# SETTLE=10             # after a manual disconnect, ignore "still connected" this long
+# SETTLE=30             # after a manual disconnect, ignore "still connected" this long
 
-# Between reconnect attempts while the headphone is away
+# Between reconnect attempts while the headphone is out of range
 # POLL_RETRY=6          # first 10 minutes
 # POLL_RETRY_MID=15     # up to an hour
 # POLL_RETRY_SLOW=30    # after that
@@ -21,5 +21,7 @@ DEVICE_NAME="WH-1000XM6"
 # If the headphone ends the connection, is back within STEAL_WINDOW, and then
 # leaves again within YIELD_WINDOW, stop pulling it back (it wants to be on
 # another device). YIELD_WINDOW=0 turns this off: always pull it back.
+# If it is not back within STEAL_WINDOW it is taken to be off: no more
+# reconnect attempts until it reconnects by itself when powered on.
 # STEAL_WINDOW=45
 # YIELD_WINDOW=180
